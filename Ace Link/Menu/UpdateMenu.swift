@@ -11,9 +11,9 @@ private struct GetReleasesResponse: Decodable {
 }
 
 class UpdateMenu: PartialMenu {
-    private let aceLinkDownloadLatestUrl = "https://github.com/blaise-io/acelink/releases/latest"
+    private let aceLinkDownloadLatestUrl = "https://github.com/nts-sixblack/AceLink/releases/latest"
     private let aceLinkLatestApiUrl =
-        "https://api.github.com/repos/blaise-io/acelink/releases/latest"
+        "https://api.github.com/repos/nts-sixblack/AceLink/releases/latest"
 
     private let updateItem = NSMenuItem(
         title: "Update",
@@ -63,10 +63,13 @@ class UpdateMenu: PartialMenu {
 
             if localVersion.compare(githubLatestVersion, options: .numeric) == .orderedAscending {
                 os_log("Update is available")
-                for item in self.items {
-                    item.isHidden = false
+                // AppKit objects must only be changed on the main thread.
+                DispatchQueue.main.async {
+                    for item in self.items {
+                        item.isHidden = false
+                    }
+                    self.updateItem.title = "Update to Ace Link \(githubLatestVersion)"
                 }
-                self.updateItem.title = "Update to Ace Link \(githubLatestVersion)"
             }
         }.resume()
     }

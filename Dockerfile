@@ -26,11 +26,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked\
 COPY player.html /opt/acestream/data/webui/html/player.html
 COPY acestream.conf /opt/acestream/acestream.conf
 
-# Prep dir serving m3u8 files.
-RUN mkdir /acelink
+# Prep dir serving m3u8 files and create non-root user.
+RUN mkdir -p /acelink \
+    && groupadd -r acestream \
+    && useradd -r -g acestream -d /opt/acestream -s /sbin/nologin acestream \
+    && chown -R acestream:acestream /opt/acestream /acelink
 
 EXPOSE 6878
 EXPOSE 8621
+
+USER acestream
 
 ENTRYPOINT ["/opt/acestream/start-engine", "@/opt/acestream/acestream.conf"]
 HEALTHCHECK CMD wget -q -t1 -O- 'http://127.0.0.1:6878/webui/api/service?method=get_version' | grep '"error": null'

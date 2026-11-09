@@ -87,7 +87,7 @@ class HistoryMenu: PartialMenu {
 
     @objc
     private func openHistoryFile(_ sender: NSMenuItem?) {
-        guard let file = sender!.representedObject as? URL else {
+        guard let sender = sender, let file = sender.representedObject as? URL else {
             return
         }
         do {

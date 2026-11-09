@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var loading = LoadingIndicator()
     private var launchedBundle: Bundle?
+    private var launchedApplication: NSRunningApplication?
     private var engine: AceStreamEngine?
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -47,7 +48,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         startAceStreamEngine {
             os_log("Ace Stream engine ready.")
-            let engine = self.engine!
+            guard let engine = self.engine else {
+                self.loading.stop()
+                NSAlert.error("Cannot run AceStream server.")
+                return
+            }
 
             if stream.hash.isEmpty {
                 // Just prepare the server, some websites launch acestream:// without args,
@@ -65,15 +70,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         url.debugDescription
                     )
 
-                    NSWorkspace.shared.open(
-                        [url], withAppBundleIdentifier: bundle.bundleIdentifier,
-                        options: [],
-                        additionalEventParamDescriptor: nil,
-                        launchIdentifiers: nil
-                    )
-
-                    self.launchedBundle = bundle
-                    self.loading.stop()
+                    if #available(macOS 10.15, *) {
+                        let config = NSWorkspace.OpenConfiguration()
+                        NSWorkspace.shared.open([url], withApplicationAt: bundle.bundleURL, configuration: config) { app, _ in
+                            DispatchQueue.main.async {
+                                self.launchedApplication = app
+                                self.launchedBundle = bundle
+                                self.loading.stop()
+                            }
+                        }
+                    } else {
+                        NSWorkspace.shared.open(
+                            [url], withAppBundleIdentifier: bundle.bundleIdentifier,
+                            options: [],
+                            additionalEventParamDescriptor: nil,
+                            launchIdentifiers: nil
+                        )
+                        self.launchedBundle = bundle
+                        self.loading.stop()
+                    }
                 }
             }
         }
@@ -103,7 +118,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 var stream = stream
-                stream.title = "\(aceStreamPlaylist.title!) [\(stream.hash.prefix(7))]"
+                let title = aceStreamPlaylist.title ?? "Unknown stream"
+                stream.title = "\(title) [\(stream.hash.prefix(7))]"
                 stream.addToHistory()
 
                 callback(stream)
@@ -175,34 +191,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func detectLaunchedBundleTerminated(_ notification: Notification) {
-        guard let launchedBundle = launchedBundle else {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
             return
         }
 
-        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey],
-           let terminatedBundleIdentifier = (app as? NSRunningApplication)?.bundleIdentifier,
-           terminatedBundleIdentifier == launchedBundle.bundleIdentifier {
-            os_log("Bundle %{public}@ terminated by user.", terminatedBundleIdentifier)
+        if let launchedApp = launchedApplication, app.processIdentifier == launchedApp.processIdentifier {
+            os_log("Launched application PID %d terminated by user.", app.processIdentifier)
+            self.launchedApplication = nil
+            self.launchedBundle = nil
+            stopAceStreamServer()
+        } else if launchedApplication == nil,
+                  let launchedBundle = launchedBundle,
+                  app.bundleIdentifier == launchedBundle.bundleIdentifier {
+            os_log("Bundle %{public}@ terminated by user.", app.bundleIdentifier ?? "")
+            self.launchedBundle = nil
             stopAceStreamServer()
         }
     }
 
     func terminateLaunchedBundle() {
-        guard let launchedBundle = launchedBundle else {
-            return
-        }
-        if launchedBundle.isBrowser {
+        if let launchedBundle = launchedBundle, launchedBundle.isBrowser {
             os_log("Launched bundle is browser which may have other tabs open, not terminating.")
+            self.launchedApplication = nil
             self.launchedBundle = nil
             return
         }
 
-        for runningApplication in NSWorkspace.shared.runningApplications
-            where runningApplication.bundleIdentifier == launchedBundle.bundleIdentifier {
-            os_log("Terminate launched bundle: %{public}@", launchedBundle)
-            runningApplication.terminate()
+        if let app = launchedApplication, !app.isTerminated {
+            os_log("Terminate launched application PID: %d", app.processIdentifier)
+            app.terminate()
+            self.launchedApplication = nil
             self.launchedBundle = nil
+            return
         }
+
+        self.launchedApplication = nil
+        self.launchedBundle = nil
     }
 
     func stopAceStreamServer() {

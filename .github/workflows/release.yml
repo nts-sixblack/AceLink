@@ -1,0 +1,68 @@
+name: Release (DMG)
+
+# Push a version tag to publish a release:
+#   echo 2.2.0 > VERSION && git commit -am "Release 2.2.0" && git tag 2.2.0 && git push --follow-tags
+# Tags have no "v" prefix: the app compares its version with the latest release tag.
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (artifact only, no release)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            V="${GITHUB_REF_NAME}"
+          else
+            V="${{ github.event.inputs.version }}"
+          fi
+          FILE_V="$(tr -d '[:space:]' < VERSION)"
+          if [[ "${GITHUB_REF}" == refs/tags/* && "$V" != "$FILE_V" ]]; then
+            echo "::error::Tag $V does not match VERSION file ($FILE_V)"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG
+        run: scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ace.Link.${{ steps.version.outputs.version }}
+          path: |
+            builds/Ace.Link.*.dmg
+            builds/Ace.Link.*.dmg.sha256
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ace Link ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          body: |
+            ## Install
+            1. Download **Ace.Link.${{ steps.version.outputs.version }}.dmg** below and drag *Ace Link* into *Applications*.
+            2. The app is not notarized. On first launch run:
+               `xattr -dr com.apple.quarantine "/Applications/Ace Link.app"`
+               (or right-click the app → *Open*).
+            3. Requires Docker Desktop or OrbStack. The engine image is `sixblack/acelink:${{ steps.version.outputs.version }}`.
+
+            Verify the download: `shasum -a 256 -c Ace.Link.${{ steps.version.outputs.version }}.dmg.sha256`
+          files: |
+            builds/Ace.Link.*.dmg
+            builds/Ace.Link.*.dmg.sha256

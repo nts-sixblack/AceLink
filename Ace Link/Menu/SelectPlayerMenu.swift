@@ -78,7 +78,9 @@ class SelectPlayerMenu: PartialMenu {
             return
         }
 
-        if bundle.bundleIdentifier == Bundle.main.infoDictionary!["CFBundleIdentifier"] as? String {
+        if let selectedBundleId = bundle.bundleIdentifier,
+           let appBundleId = Bundle.main.bundleIdentifier,
+           selectedBundleId == appBundleId {
             NSAlert.error("This causes the universe to implode.")
             return
         }

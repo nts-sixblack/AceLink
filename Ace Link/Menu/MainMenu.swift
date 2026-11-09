@@ -2,6 +2,9 @@ import Cocoa
 import os
 
 class MainMenu: NSMenu {
+    private var cachedCanPlay: Bool = false
+    private var isCheckingCanPlay: Bool = false
+
     let partialMenus: [PartialMenu] = [
         InstallDockerMenu(),
         OpenStreamMenu(),
@@ -41,13 +44,33 @@ class MainMenu: NSMenu {
         addItem(openHelpDialogItem)
         addItem(quitItem)
 
-        update()
+        // Initial async check on startup so the menu is immediately responsive
+        checkCanPlayAsync()
     }
 
     override func update() {
-        let canPlay = Process.runCommand("docker", "--version").terminationStatus == 0
         for menu in partialMenus {
-            menu.update(canPlay: canPlay)
+            menu.update(canPlay: cachedCanPlay)
+        }
+        checkCanPlayAsync()
+    }
+
+    private func checkCanPlayAsync() {
+        guard !isCheckingCanPlay else { return }
+        isCheckingCanPlay = true
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let canPlay = Process.runCommand("docker", "--version").terminationStatus == 0
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isCheckingCanPlay = false
+                if self.cachedCanPlay != canPlay {
+                    self.cachedCanPlay = canPlay
+                    for menu in self.partialMenus {
+                        menu.update(canPlay: canPlay)
+                    }
+                }
+            }
         }
     }
 

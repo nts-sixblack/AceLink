@@ -14,6 +14,12 @@ xcshareddata/
 *.o
 *.pyc
 builds
+.build
+
 
 # Backup files
 *~.nib
+
+# Local tooling
+.pi/
+.swiftpm/

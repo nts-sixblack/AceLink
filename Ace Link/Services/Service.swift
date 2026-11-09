@@ -3,7 +3,16 @@ import os
 
 class Service {
     private let started = DispatchTime.now()
+    private let finishedLock = NSLock()
+    private var finished = false
     let urlSession = URLSession(configuration: .ephemeral)
+
+    // True once the callback has been scheduled; further checks and callbacks are ignored.
+    var isFinished: Bool {
+        finishedLock.lock()
+        defer { finishedLock.unlock() }
+        return finished
+    }
 
     var callback: (AppError?) -> Void = { _ in }
     var error: () -> Void = {}
@@ -23,12 +32,17 @@ class Service {
                 self.callbackInMainThread()
             } else {
                 self.run()
-                self.check()
+                if !self.isFinished {
+                    self.check()
+                }
             }
         }
     }
 
     func scheduleCheck() {
+        if isFinished {
+            return
+        }
         if DispatchTime.now() >= started + maxWait {
             callbackInMainThread(AppError(defaultError))
         } else {
@@ -47,6 +61,13 @@ class Service {
     }
 
     func callbackInMainThread(_ error: AppError? = nil) {
+        finishedLock.lock()
+        let alreadyFinished = finished
+        finished = true
+        finishedLock.unlock()
+        if alreadyFinished {
+            return
+        }
         DispatchQueue.main.async {
             self.callback(error)
         }

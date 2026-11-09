@@ -16,6 +16,7 @@ private struct GetPlaylistResponse: Decodable {
 class AceStreamPlaylist: Service {
     let aceStreamEngine: AceStreamEngine
     let stream: StreamFile
+    private let accessToken: String
     var title: String?
 
     override var defaultError: String { "Cannot get stream title." }
@@ -23,6 +24,8 @@ class AceStreamPlaylist: Service {
     init(aceStreamEngine: AceStreamEngine, stream: StreamFile) {
         self.aceStreamEngine = aceStreamEngine
         self.stream = stream
+        // The engine only reports ready once it has an access token.
+        accessToken = aceStreamEngine.accessToken ?? ""
 
         super.init()
 
@@ -30,7 +33,7 @@ class AceStreamPlaylist: Service {
 
         let url = AppConstants.Docker.baseURL.appendingPathComponent("/server/api")
             .appendingQuery("method", "playlist_add_item")
-            .appendingQuery("token", aceStreamEngine.accessToken!)
+            .appendingQuery("token", accessToken)
             .appendingQuery(stream.param, stream.hash)
 
         urlSession.dataTask(with: url).resume()
@@ -39,7 +42,7 @@ class AceStreamPlaylist: Service {
     override func check() {
         let url = AppConstants.Docker.baseURL.appendingPathComponent("/server/api")
             .appendingQuery("method", "playlist_get")
-            .appendingQuery("token", aceStreamEngine.accessToken!)
+            .appendingQuery("token", accessToken)
 
         urlSession.jsonDataTask(with: url, decodable: GetPlaylistResponse.self) { data in
             if let playlist = data?.result.playlist.first {

@@ -16,17 +16,47 @@
         .video-js .vjs-big-play-button {
             top: 45%;
             left: 50%;
-            transform: translate(-50% -50%);
+            transform: translate(-50%, -50%);
         }
     </style>
 </head>
 <body>
 <video class="video-js vjs-default-skin" controls width="100%" height="100%"></video>
 <script>
-    document.title = `${document.title} [${"{player_id}".substr(0, 7)}]`;
-    const player = videojs(document.querySelector('video'));
-    player.src(`http://127.0.0.1:6878/ace/manifest.m3u8?id={player_id}`);
-    player.play();
+    (function () {
+        // Safely extract and validate player id to avoid script breakout / XSS.
+        function getSanitizedPlayerId() {
+            // First check window path: /webui/player/<player_id>
+            const pathParts = window.location.pathname.split('/').filter(Boolean);
+            const candidate = pathParts[pathParts.length - 1] || '';
+            if (/^[a-fA-F0-9]{40}$/.test(candidate)) {
+                return candidate;
+            }
+            // Check query param (?id=...)
+            const searchParams = new URLSearchParams(window.location.search);
+            const queryId = searchParams.get('id') || '';
+            if (/^[a-fA-F0-9]{40}$/.test(queryId)) {
+                return queryId;
+            }
+            return null;
+        }
+
+        const playerId = getSanitizedPlayerId();
+        if (playerId) {
+            document.title = `${document.title} [${playerId.slice(0, 7)}]`;
+            const player = videojs(document.querySelector('video'));
+            try {
+                const manifestUrl = new URL('http://127.0.0.1:6878/ace/manifest.m3u8');
+                manifestUrl.searchParams.set('id', playerId);
+                player.src(manifestUrl.toString());
+                player.play();
+            } catch (err) {
+                console.error('Ace Link: Failed to construct manifest URL.', err);
+            }
+        } else {
+            console.error('Ace Link: Invalid or missing stream ID.');
+        }
+    })();
 </script>
 </body>
 </html>

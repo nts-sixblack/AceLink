@@ -13,10 +13,19 @@ class PlaylistServer: Service {
     }
 
     override func run() {
-        let cmdInContainer = "echo '\(stream.m3uData)' > acelink.m3u8;" +
-            "python3 -m http.server \(AppConstants.Docker.proxyPort)"
+        guard let containerID = engine.containerID else {
+            callbackInMainThread(AppError(defaultError))
+            return
+        }
+        // The playlist contents (which include the stream title, controlled by the stream
+        // publisher) are passed as an environment variable, never interpolated into the shell
+        // command, so they cannot inject commands.
+        let cmdInContainer = "printf '%s\\n' \"$ACELINK_M3U\" > acelink.m3u8;" +
+            "exec python3 -m http.server \(AppConstants.Docker.proxyPort)"
         _ = Process.runCommand(
-            "docker", "exec", "--detach", "--workdir=/acelink", engine.containerID!,
+            "docker", "exec", "--detach", "--workdir=/acelink",
+            "--env", "ACELINK_M3U=\(stream.m3uData)",
+            containerID,
             "sh", "-c", cmdInContainer
         )
     }

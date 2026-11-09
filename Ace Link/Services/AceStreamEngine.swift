@@ -20,8 +20,10 @@ class AceStreamEngine: Service {
             "run",
             "--rm",
             "--detach",
-            "--publish=\(AppConstants.Docker.enginePort):\(AppConstants.Docker.enginePort)",
-            "--publish=\(AppConstants.Docker.proxyPort):\(AppConstants.Docker.proxyPort)",
+            // Only publish on the loopback interface so the engine and the playlist server are
+            // not reachable from other machines on the network.
+            "--publish=127.0.0.1:\(AppConstants.Docker.enginePort):\(AppConstants.Docker.enginePort)",
+            "--publish=127.0.0.1:\(AppConstants.Docker.proxyPort):\(AppConstants.Docker.proxyPort)",
             "--name=\(AppConstants.Docker.containerName)",
             AppConstants.Docker.image,
             "--client-console",
@@ -30,12 +32,12 @@ class AceStreamEngine: Service {
             "--bind-all",
             "--live-buffer-time=15",
             "--live-cache-type=memory",
-            "-–vod-buffer=15",
+            "--vod-buffer=15",
             "--vod-cache-type=memory"
         )
-        if process.standardOutContents.isEmpty {
+        if process.terminationStatus != 0 || process.standardOutContents.isEmpty {
             os_log("Cannot get engine ID...")
-            callback(nil)
+            callbackInMainThread(AppError(defaultError))
             return
         }
         containerID = process.standardOutContents

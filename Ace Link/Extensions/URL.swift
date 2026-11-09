@@ -7,6 +7,6 @@ extension URL {
         let queryItem = URLQueryItem(name: name, value: value)
         queryItems.append(queryItem)
         urlComponents.queryItems = queryItems
-        return urlComponents.url!
+        return urlComponents.url ?? self
     }
 }

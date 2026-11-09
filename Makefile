@@ -1,31 +1,26 @@
 VERSION := $(shell cat VERSION)
-ARCHIVEDIR ?= $(CURDIR)/builds/archives/Ace.Link.$(VERSION).xcarchive
-RELEASEDIR ?= $(CURDIR)/builds/Ace.Link.$(VERSION)
+IMAGE ?= sixblack/acelink
 DOCKER_BUILDKIT ?= 1
-DOCKER_DEFAULT_PLATFORM ?= linux/amd64
+export DOCKER_BUILDKIT
+
+.PHONY: docker docker-push dmg tag release
 
 docker:
-	# Create docker image
-	docker build . --tag blaiseio/acelink:$(VERSION) --progress=plain
+	# Build the Ace Stream engine image (amd64 only; runs via Rosetta/QEMU on Apple silicon)
+	docker build --platform=linux/amd64 . --tag $(IMAGE):$(VERSION) --tag $(IMAGE):latest --progress=plain
 
-build:
-	# Create a build
-	sed -i '' 's/[0-9]\.[0-9]\.[0-9]/$(VERSION)/g' README.md
-	agvtool new-marketing-version $(VERSION)
-	xcodebuild -scheme 'Ace Link' archive -archivePath $(ARCHIVEDIR)
+docker-push: docker
+	# Push the engine image (requires `docker login` as the image owner)
+	docker push $(IMAGE):$(VERSION)
+	docker push $(IMAGE):latest
+
+dmg:
+	# Build builds/Ace.Link.$(VERSION).dmg
+	scripts/build-dmg.sh $(VERSION)
 
 tag:
-	# Create a new release tag
+	# Tag the release; CI then builds the DMG, publishes the GitHub release and pushes the image
 	git tag $(VERSION)
-	git push origin --tags
+	git push origin $(VERSION)
 
-release:
-	# Create a new release DMG from the latest build
-	rm -rf $(RELEASEDIR)
-	mkdir -p $(RELEASEDIR)
-	cp -R '$(ARCHIVEDIR)/Products/Applications/Ace Link.app' $(RELEASEDIR)
-	ln -s /Applications $(RELEASEDIR)/Applications
-	hdiutil create -volname "Ace Link $(VERSION)" -srcfolder $(RELEASEDIR) -ov -format UDZO $(RELEASEDIR).dmg
-	rm -rf $(RELEASEDIR)
-	open -a finder $(CURDIR)/builds
-	open https://github.com/blaise-io/acelink/releases/new
+release: dmg docker-push
